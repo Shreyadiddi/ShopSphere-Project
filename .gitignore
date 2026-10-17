@@ -12,3 +12,5 @@ __pycache__/
 
 # Generated log files
 logs/*.log
+
+shopsphere.log
