@@ -11,6 +11,76 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
+# Validate required columns
+def validate_columns(customers):
+    required_columns = [
+        "customer_id",
+        "customer_name",
+        "city",
+        "signup_date"
+    ]
+
+    missing_columns = set(required_columns) - set(customers.columns)
+
+    if missing_columns:
+        raise ValueError(
+            f"Missing required columns: {missing_columns}"
+        )
+
+    logging.info("Required columns validation passed!")
+
+# Validate missing values in required columns
+def validate_missing_values(customers):
+    required_columns = [
+        "customer_id",
+        "customer_name",
+        "city",
+        "signup_date"
+    ]
+
+    missing_values = customers[required_columns].isnull().sum()
+
+    if missing_values.any():
+        raise ValueError(
+            f"Missing values found:\n{missing_values[missing_values > 0]}"
+    )
+  
+    logging.info("Missing value validation passed")
+
+# Validate unique customer IDs
+def validate_unique_ids(customers):
+    duplicate_ids = customers.loc[
+        customers["customer_id"].duplicated(keep=False),
+        "customer_id"
+    ]
+
+    if not duplicate_ids.empty:
+        raise ValueError(
+            f"Duplicate customer IDs found: {duplicate_ids.tolist}"
+        )
+
+    logging.info("Unique customer ID validation passed!")
+
+# Validate signup dates
+def validate_signup_dates(customers):
+    parsed_dates = pd.to_datetime(
+        customers["signup_date"],
+        errors="coerce"
+    )
+
+    invalid_dates = parsed_dates.isnull()
+
+    if invalid_dates.any():
+        bad_rows = customers.loc[
+            invalid_dates, ["customer_id", "signup_date"]
+        ]
+
+        raise ValueError(
+            f"Invalid signup dates found:\n{bad_rows}"
+        )
+
+    logging.info("Signup date validation passed!")
+
 # Find the project folder
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -23,75 +93,15 @@ data_file = PROJECT_ROOT / "data" / "clean" / "customers_clean.csv"
 # Read the cleaned CSV
 customers = pd.read_csv(data_file)
 
-# Validate required columns
-required_columns = [
-    "customer_id",
-    "customer_name",
-    "city",
-    "signup_date"
-]
-
-missing_columns = set(required_columns) - set(customers.columns)
-
-if missing_columns:
-    raise ValueError(f"Missing required columns: {missing_columns}")
-
-logging.info("Required columns validation passed!")
-
 print("Cleaned customer data loaded:")
 print(customers)
 
 print("\nNumber of customer records:", len(customers))
 
-# Validate missing values in required columns
-required_columns = [
-    "customer_id",
-    "customer_name",
-    "city",
-    "signup_date"
-]
-
-missing_values = customers[required_columns].isnull().sum()
-
-if missing_values.any():
-    raise ValueError(
-        f"Missing values found:\n{missing_values[missing_values > 0]}"
-    )
-
-    
-logging.info("Missing value validation passed")
-
-# Validate unique customer IDs
-duplicate_ids = customers.loc[
-    customers["customer_id"].duplicated(keep=False),
-    "customer_id"
-]
-
-if not duplicate_ids.empty:
-    raise ValueError(
-        f"Duplicate customer IDs found: {duplicate_ids.tolist}"
-    )
-
-print("Unique customer ID validation Passed!")
-
-# Validate signup dates
-parsed_dates = pd.to_datetime(
-    customers["signup_date"],
-    errors="coerce"
-)
-
-invalid_dates = parsed_dates.isnull()
-
-if invalid_dates.any():
-    bad_rows = customers.loc[
-        invalid_dates, ["customer_id", "signup_date"]
-    ]
-
-    raise ValueError(
-        f"Invalid signup dates found:\n{bad_rows}"
-    )
-
-print("Signup date validation passed!")
+validate_columns(customers)
+validate_missing_values(customers)
+validate_unique_ids(customers)
+validate_signup_dates(customers)
 
 # Connect to PostgreSQL
 try:
