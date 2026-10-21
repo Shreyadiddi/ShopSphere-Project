@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 import logging
 import pandas as pd
-import psycopg2 
+import psycopg2
 from dotenv import load_dotenv
 
 logging.basicConfig(
@@ -44,7 +44,7 @@ def validate_missing_values(customers):
         raise ValueError(
             f"Missing values found:\n{missing_values[missing_values > 0]}"
     )
-  
+
     logging.info("Missing value validation passed")
 
 # Validate unique customer IDs
@@ -56,7 +56,7 @@ def validate_unique_ids(customers):
 
     if not duplicate_ids.empty:
         raise ValueError(
-            f"Duplicate customer IDs found: {duplicate_ids.tolist}"
+            f"Duplicate customer IDs found: {duplicate_ids.tolist()}"
         )
 
     logging.info("Unique customer ID validation passed!")
@@ -81,78 +81,112 @@ def validate_signup_dates(customers):
 
     logging.info("Signup date validation passed!")
 
-# Find the project folder
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+def validate_customers(customers):
+        validate_columns(customers)
+        validate_missing_values(customers)
+        validate_unique_ids(customers)
+        validate_signup_dates(customers)
 
-# Load database credentials from .env
-load_dotenv(PROJECT_ROOT / ".env")
+        logging.info("All customers validations passed!")
 
-# Locate the cleaned customer data
-data_file = PROJECT_ROOT / "data" / "clean" / "customers_clean.csv"
 
-# Read the cleaned CSV
-customers = pd.read_csv(data_file)
 
-print("Cleaned customer data loaded:")
-print(customers)
+def main(project_root=None):
+    # Find the project folder
+    if project_root is None:
+        PROJECT_ROOT = Path(__file__).resolve().parent.parent
+    else:
+        PROJECT_ROOT = Path(project_root)
 
-print("\nNumber of customer records:", len(customers))
+    # Load database credentials from .env
+    load_dotenv(PROJECT_ROOT / ".env")
 
-validate_columns(customers)
-validate_missing_values(customers)
-validate_unique_ids(customers)
-validate_signup_dates(customers)
+    required_env_vars = [
+    "DB_HOST",
+    "DB_PORT",
+    "DB_NAME",
+    "DB_USER",
+    "DB_PASSWORD",
+]
 
-# Connect to PostgreSQL
-try:
-    connection = psycopg2.connect(
-        host = os.getenv("DB_HOST"),
-        port = os.getenv("DB_PORT"),
-        database = os.getenv("DB_NAME"),
-        user = os.getenv("DB_USER"),
-        password = os.getenv("DB_PASSWORD")
-    )
+    missing_env_vars = [
+        var for var in required_env_vars
+        if not os.getenv(var)
+    ]
 
-    cursor = connection.cursor()
-
-    insert_query = """ 
-        INSERT INTO public.shopsphere_customers
-            (customer_id, customer_name, city, signup_date)
-        VALUES (%s, %s, %s, %s)
-        ON CONFLICT (customer_id) DO NOTHING;
-    """
-    inserted_count = 0
-    skipped_count = 0
-    
-    for _, row in customers.iterrows():
-        cursor.execute(
-            insert_query,
-            (
-                int(row["customer_id"]),
-                row["customer_name"],
-                row["city"],
-                row["signup_date"]
-            )
+    if missing_env_vars:
+        raise ValueError(
+            f"Missing database environment variables: {missing_env_vars}"
         )
 
-        if cursor.rowcount == 1:
-            inserted_count += 1
-        else:
-            skipped_count += 1
+    # Locate the cleaned customer data
+    data_file = PROJECT_ROOT / "data" / "clean" / "customers_clean.csv"
 
-    logging.info(f"Records inserted: {inserted_count}")
-    logging.info(f"Records skipped: {skipped_count}")
+    # Read the cleaned CSV
+    customers = pd.read_csv(data_file)
 
-    connection.commit()
-    print("\nCustomer records loaded successfully!")
+    logging.info(
+        "Cleaned customer data loaded. Total records: %s",
+        len(customers)
+    )
+    validate_customers(customers)
 
-except Exception as error:
-    if "connection" in locals():
-        connection.rollback()
-    logging.error("Data load failed:", error)
 
-finally:
-    if "cursor" in locals():
-        cursor.close()
-    if "connection" in locals():
-        connection.close()
+    # Connect to PostgreSQL
+    try:
+        connection = psycopg2.connect(
+            host = os.getenv("DB_HOST"),
+            port = os.getenv("DB_PORT"),
+            database = os.getenv("DB_NAME"),
+            user = os.getenv("DB_USER"),
+            password = os.getenv("DB_PASSWORD")
+        )
+
+        cursor = connection.cursor()
+
+        insert_query = """
+            INSERT INTO public.shopsphere_customers
+                (customer_id, customer_name, city, signup_date)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (customer_id) DO NOTHING;
+        """
+        inserted_count = 0
+        skipped_count = 0
+
+        for _, row in customers.iterrows():
+            cursor.execute(
+                insert_query,
+                (
+                    int(row["customer_id"]),
+                    row["customer_name"],
+                    row["city"],
+                    row["signup_date"]
+                )
+            )
+
+            if cursor.rowcount == 1:
+                inserted_count += 1
+            else:
+                skipped_count += 1
+
+        logging.info(f"Records inserted: {inserted_count}")
+        logging.info(f"Records skipped: {skipped_count}")
+
+        connection.commit()
+        print("\nCustomer records loaded successfully!")
+
+    except Exception:
+        if "connection" in locals():
+            connection.rollback()
+
+        logging.exception("Data load failed")
+        raise
+
+    finally:
+        if "cursor" in locals():
+            cursor.close()
+        if "connection" in locals():
+            connection.close()
+
+if __name__ == "__main__":
+    main()
